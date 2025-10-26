@@ -32,13 +32,17 @@ impl Interpreter {
                 let val = self.eval(expr);
                 self.env.insert(name.clone(), val);
             }
-            Stmt::Say(expr) => {
-                let val = self.eval(expr);
-                match val {
-                    Value::Number(n) => println!("{}", n),
-                    Value::Text(s) => println!("{}", s),
-                }
-            }
+	    Stmt::Say(exprs) => {
+    	    	let mut output = String::new();
+    	    	for expr in exprs {
+        	    let val = self.eval(expr);
+        	    match val {
+            	    	Value::Number(n) => output.push_str(&n.to_string()),
+            	    	Value::Text(s) => output.push_str(&s),
+        	    }
+    	    	}
+    	    	println!("{}", output);
+	    }
             Stmt::If(cond, body) => {
                 let val = self.eval(cond);
                 if matches!(val, Value::Number(n) if n != 0) {
@@ -65,25 +69,34 @@ impl Interpreter {
     }
 
     fn eval(&self, expr: &Expr) -> Value {
-        match expr {
-            Expr::Value(v) => v.clone(),
-            Expr::Var(name) => self.env.get(name).cloned().unwrap_or(Value::Number(0)),
-            Expr::BinaryOp(left, op, right) => {
-                let l = self.eval(left);
-                let r = self.eval(right);
-                match (l, r) {
-                    (Value::Number(a), Value::Number(b)) => match op.as_str() {
-                        "+" => Value::Number(a + b),
-                        "-" => Value::Number(a - b),
-                        "*" => Value::Number(a * b),
-                        "/" => Value::Number(if b != 0 { a / b } else { 0 }),
-                        "%" => Value::Number(if b != 0 { a % b } else { 0 }),
-                        _ => Value::Number(0),
-                    },
+    match expr {
+        Expr::Value(v) => v.clone(),
+        Expr::Var(name) => self.env.get(name).cloned().unwrap_or(Value::Number(0)),
+        Expr::BinaryOp(left, op, right) => {
+            let l = self.eval(left);
+            let r = self.eval(right);
+            match (l, r) {
+                (Value::Number(a), Value::Number(b)) => match op.as_str() {
+                    "+" => Value::Number(a + b),
+                    "-" => Value::Number(a - b),
+                    "*" => Value::Number(a * b),
+                    "/" => Value::Number(if b != 0 { a / b } else { 0 }),
+                    "%" => Value::Number(if b != 0 { a % b } else { 0 }),
                     _ => Value::Number(0),
-                }
+                },
+                _ => Value::Number(0),
             }
-            Expr::FuncCall(_) => Value::Number(0),
+        }
+        Expr::FuncCall(_) => Value::Number(0),
+        Expr::KeyPressed(key) => {
+            if Self::is_key_pressed(key) { Value::Number(1) } else { Value::Number(0) }
         }
     }
 }
+
+// helper function
+fn is_key_pressed(key: &str) -> bool {
+    // placeholder: integrate with a crate like `crossterm` or `rdev` later
+    false
+}
+

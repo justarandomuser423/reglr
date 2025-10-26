@@ -10,13 +10,14 @@ pub enum Expr {
     Var(String),
     BinaryOp(Box<Expr>, String, Box<Expr>),
     FuncCall(String),
+    KeyPressed(String), // new: check if a key is pressed
 }
 
 #[derive(Clone, Debug)]
 pub enum Stmt {
     Make(String, Option<Expr>, Vec<Stmt>),
     Change(String, Expr),
-    Say(Expr),
+    Say(Vec<Expr>),
     If(Expr, Vec<Stmt>),
     Repeat(Expr, Vec<Stmt>),
     ExprStmt(Expr),
