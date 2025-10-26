@@ -1,1 +1,0 @@
-C:\Users\31687\Documents\Downloads\Reglr\target\release\reglr.exe: C:\Users\31687\Documents\Downloads\Reglr\src\ast.rs C:\Users\31687\Documents\Downloads\Reglr\src\interpreter.rs C:\Users\31687\Documents\Downloads\Reglr\src\lexer.rs C:\Users\31687\Documents\Downloads\Reglr\src\main.rs C:\Users\31687\Documents\Downloads\Reglr\src\parser.rs
