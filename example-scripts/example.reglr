@@ -1,0 +1,29 @@
+# variables
+make x be 10
+make name be "zane"
+
+change x to 15
+
+say x
+say name
+
+make greet do
+    say "hello"
+    say name
+greet
+
+make a be 5
+make b be 3
+make c be a + b * 2
+say c
+
+if a - b do
+    say "a is bigger than b"
+
+repeat 3 times
+    say "looping"
+
+make addTwo do
+    make res be a + 2
+    say res
+addTwo

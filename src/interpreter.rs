@@ -1,179 +1,89 @@
-use crate::lexer::Token;
-use crate::ast::{Expr, Stmt, Value};
-use logos::Lexer;
+use crate::ast::*;
+use std::collections::HashMap;
 
-pub struct Parser<'a> {
-    tokens: Vec<Token>,
-    slices: Vec<&'a str>,
-    pos: usize,
-    text: Vec<&'a str>,
+pub struct Interpreter {
+    env: HashMap<String, Value>,
+    funcs: HashMap<String, Vec<Stmt>>,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(lex: &mut Lexer<'a, Token>) -> Self {
-        let tokens: Vec<Token> = lex.clone().collect();
-        let mut text = Vec::new();
-        lex.rewind();
-        while let Some(_) = lex.next() {
-            text.push(lex.slice());
-        }
-        Parser { tokens, slices: vec![], pos: 0, text }
+impl Interpreter {
+    pub fn new() -> Self {
+        Interpreter { env: HashMap::new(), funcs: HashMap::new() }
     }
 
-    fn current(&self) -> Option<&Token> {
-        self.tokens.get(self.pos)
-    }
-
-    fn advance(&mut self) {
-        self.pos += 1;
-    }
-
-    fn eat(&mut self, expected: &Token) -> bool {
-        if let Some(t) = self.current() {
-            if std::mem::discriminant(t) == std::mem::discriminant(expected) {
-                self.advance();
-                return true;
-            }
-        }
-        false
-    }
-
-    pub fn parse(&mut self) -> Vec<Stmt> {
-        let mut stmts = Vec::new();
-
-        while self.pos < self.tokens.len() {
-            if let Some(s) = self.parse_stmt() {
-                stmts.push(s);
-            } else {
-                self.advance();
-            }
-        }
-
-        stmts
-    }
-
-    fn parse_stmt(&mut self) -> Option<Stmt> {
-        match self.current()? {
-            Token::Make => {
-                self.advance();
-                if let Some(Token::Identifier) = self.current() {
-                    let name = self.text[self.pos].to_string();
-                    self.advance();
-
-                    match self.current() {
-                        Some(Token::Be) => {
-                            self.advance();
-                            let expr = self.parse_expr();
-                            Some(Stmt::Make(name, Some(expr), vec![]))
-                        }
-                        Some(Token::Do) => {
-                            self.advance();
-                            let body = self.parse_block();
-                            Some(Stmt::Make(name, None, body))
-                        }
-                        _ => None,
-                    }
-                } else { None }
-            }
-            Token::Change => {
-                self.advance();
-                if let Some(Token::Identifier) = self.current() {
-                    let name = self.text[self.pos].to_string();
-                    self.advance();
-                    if let Some(Token::Identifier) = self.current() {
-                        self.advance(); // skip 'to'
-                        let expr = self.parse_expr();
-                        Some(Stmt::Change(name, expr))
-                    } else { None }
-                } else { None }
-            }
-            Token::Say => {
-                self.advance();
-                let expr = self.parse_expr();
-                Some(Stmt::Say(expr))
-            }
-            Token::If => {
-                self.advance();
-                let cond = self.parse_expr();
-                let body = self.parse_block();
-                Some(Stmt::If(cond, body))
-            }
-            Token::Repeat => {
-                self.advance();
-                let times = self.parse_expr();
-                if self.eat(&Token::Times) {
-                    let body = self.parse_block();
-                    Some(Stmt::Repeat(times, body))
-                } else { None }
-            }
-            Token::Identifier => {
-                let name = self.text[self.pos].to_string();
-                self.advance();
-                Some(Stmt::ExprStmt(Expr::FuncCall(name)))
-            }
-            _ => None,
+    pub fn run(&mut self, stmts: &[Stmt]) {
+        for stmt in stmts {
+            self.exec(stmt);
         }
     }
 
-    fn parse_block(&mut self) -> Vec<Stmt> {
-        // naive: parse next statements until end or dedent (for simplicity we parse all remaining)
-        let mut stmts = Vec::new();
-        while self.pos < self.tokens.len() {
-            if let Some(s) = self.parse_stmt() {
-                stmts.push(s);
-            } else {
-                break;
-            }
-        }
-        stmts
-    }
-
-    // recursive descent math parsing
-    fn parse_expr(&mut self) -> Expr {
-        self.parse_add_sub()
-    }
-
-    fn parse_add_sub(&mut self) -> Expr {
-        let mut node = self.parse_mul_div();
-        while let Some(token) = self.current() {
-            match token {
-                Token::Plus => { self.advance(); node = Expr::BinaryOp(Box::new(node), "+".into(), Box::new(self.parse_mul_div())); }
-                Token::Minus => { self.advance(); node = Expr::BinaryOp(Box::new(node), "-".into(), Box::new(self.parse_mul_div())); }
-                _ => break,
-            }
-        }
-        node
-    }
-
-    fn parse_mul_div(&mut self) -> Expr {
-        let mut node = self.parse_primary();
-        while let Some(token) = self.current() {
-            match token {
-                Token::Star => { self.advance(); node = Expr::BinaryOp(Box::new(node), "*".into(), Box::new(self.parse_primary())); }
-                Token::Slash => { self.advance(); node = Expr::BinaryOp(Box::new(node), "/".into(), Box::new(self.parse_primary())); }
-                Token::Percent => { self.advance(); node = Expr::BinaryOp(Box::new(node), "%".into(), Box::new(self.parse_primary())); }
-                _ => break,
-            }
-        }
-        node
-    }
-
-    fn parse_primary(&mut self) -> Expr {
-        if let Some(t) = self.current() {
-            match t {
-                Token::Number => { let val = self.text[self.pos].parse::<i64>().unwrap_or(0); self.advance(); Expr::Value(Value::Number(val)) }
-                Token::String => { let s = self.text[self.pos].trim_matches('"').to_string(); self.advance(); Expr::Value(Value::Text(s)) }
-                Token::Identifier => { let name = self.text[self.pos].to_string(); self.advance(); Expr::Var(name) }
-                Token::LParen => {
-                    self.advance();
-                    let node = self.parse_expr();
-                    if let Some(Token::RParen) = self.current() { self.advance(); }
-                    node
+    fn exec(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::Make(name, expr_opt, body) => {
+                if let Some(expr) = expr_opt {
+                    let val = self.eval(expr);
+                    self.env.insert(name.clone(), val);
                 }
-                _ => { self.advance(); Expr::Value(Value::Number(0)) }
+                if !body.is_empty() {
+                    self.funcs.insert(name.clone(), body.clone());
+                }
             }
-        } else {
-            Expr::Value(Value::Number(0))
+            Stmt::Change(name, expr) => {
+                let val = self.eval(expr);
+                self.env.insert(name.clone(), val);
+            }
+            Stmt::Say(expr) => {
+                let val = self.eval(expr);
+                match val {
+                    Value::Number(n) => println!("{}", n),
+                    Value::Text(s) => println!("{}", s),
+                }
+            }
+            Stmt::If(cond, body) => {
+                let val = self.eval(cond);
+                if matches!(val, Value::Number(n) if n != 0) {
+                    self.run(body);
+                }
+            }
+            Stmt::Repeat(times_expr, body) => {
+                let times = match self.eval(times_expr) {
+                    Value::Number(n) => n,
+                    _ => 0,
+                };
+                for _ in 0..times {
+                    self.run(body);
+                }
+            }
+            Stmt::ExprStmt(expr) => {
+                if let Expr::FuncCall(name) = expr {
+                    if let Some(body) = self.funcs.get(name).cloned() {
+                        self.run(&body);
+                    }
+                }
+            }
+        }
+    }
+
+    fn eval(&self, expr: &Expr) -> Value {
+        match expr {
+            Expr::Value(v) => v.clone(),
+            Expr::Var(name) => self.env.get(name).cloned().unwrap_or(Value::Number(0)),
+            Expr::BinaryOp(left, op, right) => {
+                let l = self.eval(left);
+                let r = self.eval(right);
+                match (l, r) {
+                    (Value::Number(a), Value::Number(b)) => match op.as_str() {
+                        "+" => Value::Number(a + b),
+                        "-" => Value::Number(a - b),
+                        "*" => Value::Number(a * b),
+                        "/" => Value::Number(if b != 0 { a / b } else { 0 }),
+                        "%" => Value::Number(if b != 0 { a % b } else { 0 }),
+                        _ => Value::Number(0),
+                    },
+                    _ => Value::Number(0),
+                }
+            }
+            Expr::FuncCall(_) => Value::Number(0),
         }
     }
 }

@@ -1,10 +1,10 @@
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum Value {
     Number(i64),
     Text(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum Expr {
     Value(Value),
     Var(String),
@@ -12,12 +12,12 @@ pub enum Expr {
     FuncCall(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum Stmt {
-    Make(String, Option<Expr>, Vec<Stmt>), // name, expr, body for func
+    Make(String, Option<Expr>, Vec<Stmt>),
     Change(String, Expr),
     Say(Expr),
     If(Expr, Vec<Stmt>),
     Repeat(Expr, Vec<Stmt>),
-    ExprStmt(Expr), // for func calls
+    ExprStmt(Expr),
 }

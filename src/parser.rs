@@ -1,165 +1,132 @@
 use crate::lexer::Token;
-use crate::ast::{Expr, Stmt, Value};
-use logos::Lexer;
+use crate::ast::*;
 
 pub struct Parser<'a> {
     tokens: Vec<Token>,
-    slices: Vec<&'a str>,
+    text: Vec<&'a str>,
     pos: usize,
-    text: Vec<&'a str>, // slice text for identifiers/numbers
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(lex: &mut Lexer<'a, Token>) -> Self {
-        let tokens: Vec<Token> = lex.clone().collect();
-        let mut text = Vec::new();
-        lex.rewind();
-        while let Some(_) = lex.next() {
-            text.push(lex.slice());
-        }
-
-        Parser { tokens, slices: vec![], pos: 0, text }
+    pub fn new(tokens: Vec<Token>, text: Vec<&'a str>) -> Self {
+        Parser { tokens, text, pos: 0 }
     }
 
     fn current(&self) -> Option<&Token> {
         self.tokens.get(self.pos)
     }
 
-    fn advance(&mut self) {
-        self.pos += 1;
+    fn current_text(&self) -> Option<&str> {
+        self.text.get(self.pos).copied()
     }
 
-    fn eat(&mut self, expected: &Token) -> bool {
-        if let Some(t) = self.current() {
-            if std::mem::discriminant(t) == std::mem::discriminant(expected) {
-                self.advance();
-                return true;
-            }
+    fn eat(&mut self, tok: Token) -> bool {
+        if Some(&tok) == self.current() {
+            self.pos += 1;
+            true
+        } else {
+            false
         }
-        false
     }
 
     pub fn parse(&mut self) -> Vec<Stmt> {
         let mut stmts = Vec::new();
-
-        while let Some(token) = self.current() {
-            match token {
-                Token::Make => {
-                    self.advance();
-                    if let Some(Token::Identifier) = self.current() {
-                        let name = self.text[self.pos].to_string();
-                        self.advance();
-
-                        if let Some(Token::Be) = self.current() {
-                            self.advance();
-                            let expr = self.parse_expr();
-                            stmts.push(Stmt::Make(name, expr));
-                        } else if let Some(Token::Do) = self.current() {
-                            // placeholder for function body
-                            self.advance();
-                            // ignore body for now
-                        }
-                    }
-                }
-                Token::Change => {
-                    self.advance();
-                    if let Some(Token::Identifier) = self.current() {
-                        let name = self.text[self.pos].to_string();
-                        self.advance();
-                        if self.eat(&Token::Identifier) { // expecting 'to'
-                            let expr = self.parse_expr();
-                            stmts.push(Stmt::Change(name, expr));
-                        }
-                    }
-                }
-                Token::Say => {
-                    self.advance();
-                    let expr = self.parse_expr();
-                    stmts.push(Stmt::Say(expr));
-                }
-                _ => self.advance(), // skip unknown
+        while self.pos < self.tokens.len() {
+            if let Some(stmt) = self.parse_stmt() {
+                stmts.push(stmt);
+            } else {
+                self.pos += 1;
             }
         }
-
         stmts
     }
 
-    impl<'a> Parser<'a> {
-    // parse full expression
+    fn parse_stmt(&mut self) -> Option<Stmt> {
+        match self.current()? {
+            Token::Make => {
+                self.pos += 1;
+                let name = self.current_text()?.to_string();
+                self.pos += 1;
+                let mut expr = None;
+                if self.eat(Token::Be) {
+                    expr = Some(self.parse_expr());
+                }
+                let mut body = vec![];
+                if self.eat(Token::Do) {
+                    while self.pos < self.tokens.len() {
+                        if matches!(self.current(), Some(Token::Identifier)) { break; }
+                        if let Some(s) = self.parse_stmt() { body.push(s); }
+                        else { self.pos += 1; }
+                    }
+                }
+                Some(Stmt::Make(name, expr, body))
+            }
+            Token::Change => {
+                self.pos += 1;
+                let name = self.current_text()?.to_string();
+                self.pos += 1;
+                self.eat(Token::To);
+                let expr = self.parse_expr();
+                Some(Stmt::Change(name, expr))
+            }
+            Token::Say => {
+                self.pos += 1;
+                let expr = self.parse_expr();
+                Some(Stmt::Say(expr))
+            }
+            Token::If => {
+                self.pos += 1;
+                let cond = self.parse_expr();
+                self.eat(Token::Do);
+                let mut body = vec![];
+                while self.pos < self.tokens.len() {
+                    if matches!(self.current(), Some(Token::Identifier)) { break; }
+                    if let Some(s) = self.parse_stmt() { body.push(s); }
+                    else { self.pos += 1; }
+                }
+                Some(Stmt::If(cond, body))
+            }
+            Token::Repeat => {
+                self.pos += 1;
+                let times = self.parse_expr();
+                self.eat(Token::Times);
+                let mut body = vec![];
+                while self.pos < self.tokens.len() {
+                    if matches!(self.current(), Some(Token::Identifier)) { break; }
+                    if let Some(s) = self.parse_stmt() { body.push(s); }
+                    else { self.pos += 1; }
+                }
+                Some(Stmt::Repeat(times, body))
+            }
+            Token::Identifier => {
+                let name = self.current_text()?.to_string();
+                self.pos += 1;
+                Some(Stmt::ExprStmt(Expr::FuncCall(name)))
+            }
+            _ => None,
+        }
+    }
+
     fn parse_expr(&mut self) -> Expr {
-        self.parse_add_sub()
-    }
-
-    // lowest precedence + and -
-    fn parse_add_sub(&mut self) -> Expr {
-        let mut node = self.parse_mul_div();
-        while let Some(token) = self.current() {
+        if let Some(token) = self.current() {
             match token {
-                Token::Plus => {
-                    self.advance();
-                    node = Expr::BinaryOp(Box::new(node), "+".to_string(), Box::new(self.parse_mul_div()));
-                }
-                Token::Minus => {
-                    self.advance();
-                    node = Expr::BinaryOp(Box::new(node), "-".to_string(), Box::new(self.parse_mul_div()));
-                }
-                _ => break,
-            }
-        }
-        node
-    }
-
-    // higher precedence * / %
-    fn parse_mul_div(&mut self) -> Expr {
-        let mut node = self.parse_primary();
-        while let Some(token) = self.current() {
-            match token {
-                Token::Star => {
-                    self.advance();
-                    node = Expr::BinaryOp(Box::new(node), "*".to_string(), Box::new(self.parse_primary()));
-                }
-                Token::Slash => {
-                    self.advance();
-                    node = Expr::BinaryOp(Box::new(node), "/".to_string(), Box::new(self.parse_primary()));
-                }
-                Token::Percent => {
-                    self.advance();
-                    node = Expr::BinaryOp(Box::new(node), "%".to_string(), Box::new(self.parse_primary()));
-                }
-                _ => break,
-            }
-        }
-        node
-    }
-
-    fn parse_primary(&mut self) -> Expr {
-        if let Some(t) = self.current() {
-            match t {
                 Token::Number => {
-                    let val = self.text[self.pos].parse::<i64>().unwrap_or(0);
-                    self.advance();
+                    let val = self.current_text().unwrap_or("0").parse::<i64>().unwrap_or(0);
+                    self.pos += 1;
                     Expr::Value(Value::Number(val))
                 }
-                Token::String => {
-                    let s = self.text[self.pos].trim_matches('"').to_string();
-                    self.advance();
-                    Expr::Value(Value::Text(s))
-                }
                 Token::Identifier => {
-                    let name = self.text[self.pos].to_string();
-                    self.advance();
+                    let name = self.current_text().unwrap_or("").to_string();
+                    self.pos += 1;
                     Expr::Var(name)
                 }
-                Token::LParen => {
-                    self.advance();
-                    let node = self.parse_expr();
-                    if let Some(Token::RParen) = self.current() {
-                        self.advance();
-                    }
-                    node
+                Token::Text => {
+                    let val = self.current_text().unwrap_or("").to_string();
+                    self.pos += 1;
+                    Expr::Value(Value::Text(val))
                 }
                 _ => {
-                    self.advance();
+                    self.pos += 1;
                     Expr::Value(Value::Number(0))
                 }
             }

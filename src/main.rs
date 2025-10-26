@@ -1,29 +1,38 @@
 mod lexer;
 mod parser;
-mod interpreter;
 mod ast;
+mod interpreter;
 
-use std::env;
 use std::fs;
-use lexer::Token;
 use logos::Logos;
+use lexer::Token;
 use parser::Parser;
 use interpreter::Interpreter;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        eprintln!("Usage: {} <script.reglr>", args[0]);
-        return;
+    let path = std::env::args().nth(1).expect("need script path");
+    let script = fs::read_to_string(path).expect("cannot read file");
+
+    let mut texts = vec![];
+    let mut tokens = vec![];
+
+    let mut lex = Token::lexer(&script);
+    while let Some(result) = lex.next() {
+        match result {
+            Ok(tok) => {
+                tokens.push(tok.clone());
+                match tok {
+                    Token::Number | Token::Identifier | Token::Text => texts.push(lex.slice()),
+                    _ => texts.push(""),
+                }
+            }
+            Err(_) => {}
+        }
     }
 
-    let filename = &args[1];
-    let source = fs::read_to_string(filename)
-        .expect("failed to read file");
+    let mut parser = Parser::new(tokens, texts);
+    let stmts = parser.parse();
 
-    let mut lex = Token::lexer(&source);
-    let mut parser = Parser::new(&mut lex);
-    let statements = parser.parse(); // currently placeholder
     let mut interp = Interpreter::new();
-    interp.run(statements);
+    interp.run(&stmts);
 }
