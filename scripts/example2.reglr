@@ -1,0 +1,4 @@
+make x be 5 + 3 * 2
+say x
+change x to (x + 1) * 2
+say x
