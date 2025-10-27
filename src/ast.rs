@@ -10,7 +10,7 @@ pub enum Expr {
     Var(String),
     BinaryOp(Box<Expr>, String, Box<Expr>),
     FuncCall(String),
-    KeyPressed(String), // new: check if a key is pressed
+    KeyPressed(String),
 }
 
 #[derive(Clone, Debug)]
@@ -21,4 +21,5 @@ pub enum Stmt {
     If(Expr, Vec<Stmt>),
     Repeat(Expr, Vec<Stmt>),
     ExprStmt(Expr),
+    Forever(Vec<Stmt>),
 }

@@ -26,6 +26,8 @@ pub enum Token {
     #[token("if")] If,
     #[token("repeat")] Repeat,
     #[token("times")] Times,
+    #[token("pressedKey")] KeyPressed,
+    #[token("forever")] Forever,
 
     #[token("+")] Plus,
     #[token("-")] Minus,

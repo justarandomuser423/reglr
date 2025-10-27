@@ -71,8 +71,9 @@ impl<'a> Parser<'a> {
             }
             Token::Say => {
                 self.pos += 1;
-                let expr = self.parse_expr();
-                Some(Stmt::Say(expr))
+                let mut exprs = vec![];
+                exprs.push(self.parse_expr());
+                Some(Stmt::Say(exprs))
             }
             Token::If => {
                 self.pos += 1;
@@ -103,35 +104,73 @@ impl<'a> Parser<'a> {
                 self.pos += 1;
                 Some(Stmt::ExprStmt(Expr::FuncCall(name)))
             }
+	    Token::Forever => {
+    		self.pos += 1;
+    		let mut body = vec![];
+    		self.eat(Token::Do);
+    		while self.pos < self.tokens.len() {
+        		if matches!(self.current(), Some(Token::Identifier)) { break; }
+        		if let Some(s) = self.parse_stmt() { body.push(s); }
+        		else { self.pos += 1; }
+    		}
+    		Some(Stmt::Forever(body))
+	    }
+            Token::KeyPressed => {
+                self.pos += 1;
+                if let Some(Token::Text) = self.current() {
+                    let key = self.current_text()?.to_string();
+                    self.pos += 1;
+                    Some(Stmt::ExprStmt(Expr::KeyPressed(key)))
+                } else { None }
+            }
             _ => None,
         }
     }
 
     fn parse_expr(&mut self) -> Expr {
-        if let Some(token) = self.current() {
-            match token {
-                Token::Number => {
-                    let val = self.current_text().unwrap_or("0").parse::<i64>().unwrap_or(0);
+        let mut left = match self.current() {
+            Some(Token::Number) => {
+                let val = self.current_text().unwrap_or("0").parse::<i64>().unwrap_or(0);
+                self.pos += 1;
+                Expr::Value(Value::Number(val))
+            }
+            Some(Token::Text) => {
+                let val = self.current_text().unwrap_or("").to_string();
+                self.pos += 1;
+                Expr::Value(Value::Text(val))
+            }
+            Some(Token::Identifier) => {
+                let name = self.current_text().unwrap_or("").to_string();
+                self.pos += 1;
+                Expr::Var(name)
+            }
+            Some(Token::KeyPressed) => {
+                self.pos += 1;
+                if let Some(Token::Text) = self.current() {
+                    let key = self.current_text().unwrap_or("").to_string();
                     self.pos += 1;
-                    Expr::Value(Value::Number(val))
-                }
-                Token::Identifier => {
-                    let name = self.current_text().unwrap_or("").to_string();
-                    self.pos += 1;
-                    Expr::Var(name)
-                }
-                Token::Text => {
-                    let val = self.current_text().unwrap_or("").to_string();
-                    self.pos += 1;
-                    Expr::Value(Value::Text(val))
-                }
-                _ => {
-                    self.pos += 1;
+                    Expr::KeyPressed(key)
+                } else {
                     Expr::Value(Value::Number(0))
                 }
             }
-        } else {
-            Expr::Value(Value::Number(0))
+            _ => { self.pos += 1; Expr::Value(Value::Number(0)) }
+        };
+
+        while let Some(op_token) = self.current() {
+            let op_str = match op_token {
+                Token::Plus => "+",
+                Token::Minus => "-",
+                Token::Star => "*",
+                Token::Slash => "/",
+                Token::Percent => "%",
+                _ => break,
+            };
+            self.pos += 1;
+            let right = self.parse_expr();
+            left = Expr::BinaryOp(Box::new(left), op_str.to_string(), Box::new(right));
         }
+
+        left
     }
 }

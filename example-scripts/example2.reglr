@@ -1,2 +1,8 @@
-make text be "hi"
-say text
+make pressed be none
+
+forever do
+    if keypressed(any) do
+        make pressed be keypressed(any)
+        say pressed
+    end
+end
