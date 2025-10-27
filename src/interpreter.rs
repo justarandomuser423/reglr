@@ -51,14 +51,20 @@ impl Interpreter {
                     self.run(body);
                 }
             }
-            Stmt::Forever(body) => {
-                loop {
-                    if let Some(key) = Self::is_key_pressed() {
-                        println!("{}", key); // prints only the key letter
-                    }
-                    self.run(body);
-                }
-            }
+	    Stmt::Forever(body) => {
+    		loop {
+        	    // read key once and save it
+        	    let key = Self::is_key_pressed();
+        	    if let Some(k) = &key {
+            		self.env.insert("pressed".to_string(), Value::Text(k.clone()));
+        	    } else {
+            	        self.env.insert("pressed".to_string(), Value::Text(String::new()));
+        	    }
+
+        	    self.run(body);
+        	    std::thread::sleep(std::time::Duration::from_millis(10));
+    	        }
+	    }
             Stmt::Repeat(times_expr, body) => {
                 let times = match self.eval(times_expr) {
                     Value::Number(n) => n,
@@ -109,18 +115,15 @@ impl Interpreter {
             Expr::FuncCall(_) => Value::Number(0),
             Expr::KeyPressed(key) => {
                 if key == "any" {
-                    if let Some(k) = Self::is_key_pressed() {
-                        Value::Text(k) // return the pressed key as text
-                    } else {
-                        Value::Text(String::new())
-                    }
-                } else {
-                    let pressed = Self::is_key_pressed();
-                    if let Some(k) = pressed {
-                        if k == *key { Value::Number(1) } else { Value::Number(0) }
-                    } else {
-                        Value::Number(0)
-                    }
+		    match self.env.get("pressed") {
+			Some(Value::Text(s)) => Value::Text(s.clone()),
+			_ => Value::Text(String::new()),
+		    }
+		} else {
+		    match self.env.get("pressed") {
+			Some(Value::Text(s)) if s == key => Value::Number(1),
+			_ => Value::Number(0),
+		    }
                 }
             }
         }

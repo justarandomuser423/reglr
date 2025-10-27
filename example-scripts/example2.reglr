@@ -1,8 +1,5 @@
 make pressed be none
 
 forever do
-    if keypressed(any) do
-        make pressed be keypressed(any)
-        say pressed
-    end
+    say "hi"
 end
